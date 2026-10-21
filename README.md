@@ -16,3 +16,7 @@ Update dan delete sama-sama menggunakan `HttpPost`.
 Delete menggunakan soft delete:
 - `is_active = 0`
 - `deleted_at = GETDATE()`
+- 
+# API_Modotrix
+ERP .Net Core Rest Api
+>>>>>>> ddf518575fde938d40adf79a2e5474d50aefbfa7
