@@ -17,3 +17,5 @@
 
 # Local development configuration
 appsettings.Development.json
+
+wwwrooot/uploads/
