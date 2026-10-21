@@ -13,12 +13,112 @@ namespace ERP.Api.Controllers;
 public class Products : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IWebHostEnvironment _environment;
 
-    public Products(AppDbContext db)
+    public Products(
+        AppDbContext db,
+        IWebHostEnvironment environment)
     {
         _db = db;
+        _environment = environment;
     }
 
+
+    [HttpPost("upload-image")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadImage(IFormFile? image)
+    {
+        if (image == null || image.Length == 0)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Silakan pilih gambar terlebih dahulu."
+            });
+        }
+
+        const long maxFileSize = 5 * 1024 * 1024;
+
+        if (image.Length > maxFileSize)
+        {
+            return BadRequest(new
+            {
+                message = "Ukuran gambar maksimal 5 MB."
+            });
+        }
+
+        var allowedExtensions = new[]
+        {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp"
+        };
+
+        var extension = Path
+            .GetExtension(image.FileName)
+            .ToLowerInvariant();
+
+        if (!allowedExtensions.Contains(extension))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Format gambar harus JPG, JPEG, PNG, atau WEBP."
+            });
+        }
+         
+        var webRootPath = _environment.WebRootPath;
+
+        if (string.IsNullOrWhiteSpace(webRootPath))
+        {
+            webRootPath = Path.Combine(
+                _environment.ContentRootPath,
+                "wwwroot");
+        }
+         
+        var uploadsFolder = Path.Combine(
+            webRootPath,
+            "uploads",
+            "products");
+
+        Directory.CreateDirectory(uploadsFolder);
+
+        // Gunakan nama file unik
+        var fileName = $"{Guid.NewGuid()}{extension}";
+
+        var filePath = Path.Combine(
+            uploadsFolder,
+            fileName);
+
+        try
+        {
+            await using var stream = new FileStream(
+                filePath,
+                FileMode.CreateNew,
+                FileAccess.Write);
+
+            await image.CopyToAsync(stream);
+        }
+        catch
+        { 
+            if (System.IO.File.Exists(filePath))
+            {
+                System.IO.File.Delete(filePath);
+            }
+
+            throw;
+        }
+         
+        var imagePath = $"/uploads/products/{fileName}";
+
+        return Ok(new
+        {
+            success = true,
+            image = imagePath,
+            message = "Gambar produk berhasil diunggah."
+        });
+    }
     [HttpGet]
     public async Task<IActionResult> GetAll(
     [FromQuery] string? search = null,
@@ -213,13 +313,11 @@ public class Products : ControllerBase
                 CostPrice = x.CostPrice,
                 SellPrice = x.SellPrice,
                  
-                MinStock = x.MinStock,
-
+                MinStock = x.MinStock, 
                 TrackStock = x.TrackStock,
                 TrackSerial = x.TrackSerial,
                  
-                WarrantyMonths = x.WarrantyMonths,
-
+                WarrantyMonths = x.WarrantyMonths, 
                 Description = x.Description,
 
                 Image = x.Image,
@@ -757,6 +855,7 @@ public class Products : ControllerBase
         }
 
         product.Sku = request.Sku.Trim();
+        product.Barcode = request.Barcode?.Trim();
         product.Name = request.Name?.Trim();
         product.InternalCode = request.InternalCode?.Trim();
         product.ExternalCode1 = request.ExternalCode1?.Trim();
@@ -908,34 +1007,38 @@ public class Products : ControllerBase
 
     [HttpPost("delete")]
     public async Task<IActionResult> Delete(
-    [FromBody] DeleteProductUnitRequest request)
+     [FromBody] DeleteProductRequest request)
     {
-        var unit = await _db.Units
+        if (request.Id <= 0)
+        {
+            return BadRequest(new
+            {
+                message = "ID produk tidak valid."
+            });
+        }
+
+        var product = await _db.Products
             .FirstOrDefaultAsync(x =>
                 x.Id == request.Id &&
                 x.DeletedAt == null);
 
-        if (unit is null)
+        if (product == null)
         {
             return NotFound(new
             {
-                message = "Satuan tidak ditemukan."
+                message = "Produk tidak ditemukan."
             });
         }
          
-        var hasProducts = await _db.Products
-            .AnyAsync(x => x.UnitId == request.Id);
-         
-        unit.DeletedAt = DateTime.Now;
-        unit.UpdatedAt = DateTime.Now;
+        product.DeletedAt = DateTime.Now;
+        product.UpdatedAt = DateTime.Now;
 
         await _db.SaveChangesAsync();
 
         return Ok(new
         {
-            message = hasProducts
-                ? "Satuan berhasil dinonaktifkan. Data terkait produk tetap tersimpan."
-                : "Satuan berhasil dihapus."
+            success = true,
+            message = "Produk berhasil dihapus."
         });
     }
 
